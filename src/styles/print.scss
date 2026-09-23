@@ -1,0 +1,115 @@
+// Print-layout specific styles that go beyond utility classes:
+// page shadow in the editor, OpenLayers control resets, and @media print rules
+// so a browser Print (Ctrl/Cmd+P) also produces a clean, single-page A4 output.
+
+// The map credit. Small and quiet, but always legible — it is a licence
+// obligation, not decoration, and it has to survive into the exported sheet.
+.ol-attribution {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  max-width: 100%;
+  padding: 1px 4px;
+  background: rgba(255, 255, 255, 0.82);
+  border-top-left-radius: 3px;
+  font-size: 9px;
+  line-height: 1.4;
+  color: #1f2937;
+
+  ul {
+    display: inline;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    display: inline;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button {
+    display: none; // never collapsible
+  }
+}
+
+// `.ol-uncollapsible` is needed: OpenLayers' own rule ties on specificity and loads later.
+.map-dashboard .ol-attribution.ol-uncollapsible {
+  right: auto;
+  left: 0;
+  bottom: 0;
+  max-width: 60%;
+  padding: 4px 10px;
+  border-radius: 0 8px 0 0;
+  border-top: 1px solid rgb(226, 232, 240);
+  border-right: 1px solid rgb(226, 232, 240);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  color: rgb(71, 85, 105);
+  font-size: 11px;
+  text-align: left;
+  flex-direction: row;
+
+  li + li::before {
+    content: " · ";
+    color: rgb(148, 163, 184);
+  }
+
+  a {
+    color: rgb(15, 23, 42);
+    text-decoration: none;
+    pointer-events: auto;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  // One line always, so the timeline above can never cover the credit.
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  ul {
+    flex-wrap: nowrap;
+  }
+
+  @media (max-width: 639px) {
+    // Cramped and horizontally-scrolling here — MobileAttribution reads this
+    // same list and shows it as a proper sheet instead.
+    display: none;
+  }
+}
+
+#print-page {
+  --page-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--page-shadow);
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #print-page,
+  #print-page * {
+    visibility: visible;
+  }
+
+  #print-page {
+    position: fixed;
+    inset: 0;
+    box-shadow: none;
+    margin: 0;
+    // The editor CSS-scales the sheet for on-screen fit; print at true size.
+    transform: none !important;
+  }
+
+  @page {
+    margin: 0;
+  }
+}

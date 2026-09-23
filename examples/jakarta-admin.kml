@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+  <name>Jakarta admin (sample)</name>
+  <Placemark>
+    <name>Jakarta Pusat</name>
+    <description>Kode 31.71 — DKI Jakarta</description>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      106.8,-6.14,0 106.88,-6.14,0 106.88,-6.22,0 106.8,-6.22,0 106.8,-6.14,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+  <Placemark>
+    <name>Jakarta Utara</name>
+    <description>Kode 31.72 — DKI Jakarta</description>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      106.75,-6.08,0 106.95,-6.08,0 106.95,-6.14,0 106.75,-6.14,0 106.75,-6.08,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+  <Placemark>
+    <name>Jakarta Barat</name>
+    <description>Kode 31.73 — DKI Jakarta</description>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      106.68,-6.1,0 106.8,-6.1,0 106.8,-6.22,0 106.68,-6.22,0 106.68,-6.1,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+  <Placemark>
+    <name>Jakarta Selatan</name>
+    <description>Kode 31.74 — DKI Jakarta</description>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      106.76,-6.22,0 106.87,-6.22,0 106.87,-6.37,0 106.76,-6.37,0 106.76,-6.22,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+  <Placemark>
+    <name>Jakarta Timur</name>
+    <description>Kode 31.75 — DKI Jakarta</description>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      106.88,-6.14,0 107.0,-6.14,0 107.0,-6.35,0 106.88,-6.35,0 106.88,-6.14,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+</Document></kml>

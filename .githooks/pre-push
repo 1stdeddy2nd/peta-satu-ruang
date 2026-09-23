@@ -1,0 +1,29 @@
+#!/bin/sh
+# Refuse a direct push to main. Work reaches main through a pull request.
+#
+# This is a habit guard, not enforcement: it lives on one machine and
+# `git push --no-verify` walks straight past it. Real enforcement is branch
+# protection, which GitHub Free does not offer on private repositories — see
+# MC-046. Install with `make hooks` (or `make install`).
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+	case "$remote_ref" in
+	refs/heads/main)
+		echo "refusing to push directly to main." >&2
+		echo "open a pull request instead:" >&2
+		echo "    git switch -c feat/<ticket>" >&2
+		echo "    git push -u origin HEAD && gh pr create" >&2
+		exit 1
+		;;
+	esac
+done
+
+# The walkthroughs are the only thing that catches a regression in this
+# product: types and lint stayed clean through every real bug found so far.
+# Skip with `git push --no-verify` when pushing work in progress.
+if [ "$SKIP_E2E" != "1" ]; then
+	echo "running the e2e suite — SKIP_E2E=1 to bypass" >&2
+	make e2e || exit 1
+fi
+
+exit 0

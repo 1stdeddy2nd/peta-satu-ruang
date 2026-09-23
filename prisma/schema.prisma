@@ -1,0 +1,308 @@
+// MapCanva persistence (MC-015).
+//
+// Geometry is stored as real PostGIS geometry rather than GeoJSON in a JSON
+// column, so analysis plugins (MC-029) can query it server-side instead of the
+// browser shipping every feature back and forth. Prisma cannot type a PostGIS
+// column, so `geom` is Unsupported and read/written through raw SQL with
+// ST_GeomFromGeoJSON / ST_AsGeoJSON.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// PostGIS is not declared here on purpose. The docker image ships it along with
+// tiger_geocoder and topology, which Prisma would then see as drift and want to
+// reset on every migrate. The first migration enables it explicitly instead, so
+// a plain Postgres (Railway) works too.
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Everyone who can sign in. Today that is one seeded admin (MC-043).
+///
+/// There is deliberately no Account/Session/VerificationToken table: with a
+/// credentials provider and JWT sessions, NextAuth needs no adapter, so those
+/// tables would sit empty. They arrive with the first OAuth provider.
+enum Role {
+  user
+  admin
+}
+
+model User {
+  id                String  @id @default(cuid())
+  email             String  @unique
+  name              String
+  /// bcrypt hash. Never a plaintext password, not even from the seed.
+  passwordHash      String
+  /// "admin" is the only value that means anything today (MC-029 assumes it).
+  role              Role
+  guidanceDismissed Boolean
+
+  projects Project[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// One saved document: the sheet plus the data on it.
+model Project {
+  id   String @id @default(cuid())
+  name String
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Page settings, template, map frame, regions, elements, and the map view.
+  /// One blob because it is always read and written whole, and its shape is
+  /// still moving; splitting it into tables now would buy nothing.
+  layout Json
+
+  layers Layer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+}
+
+/// An uploaded dataset, and how it is drawn.
+model Layer {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  name         String
+  color        String
+  opacity      Float
+  visible      Boolean
+  geometryType String
+  /// Position in the layer list.
+  sortOrder    Int
+
+  /// Attribute keys offered as colour-by fields.
+  attributes    Json
+  styleMode     String
+  categoryField String?
+  /// [{ value, color }] for categorised layers.
+  categories    Json
+
+  features Feature[]
+
+  @@index([projectId, sortOrder])
+}
+
+/// A single geometry with its attributes.
+model Feature {
+  id      String @id @default(cuid())
+  layerId String
+  layer   Layer  @relation(fields: [layerId], references: [id], onDelete: Cascade)
+
+  properties Json
+
+  /// EPSG:3857 to match the map, so no reprojection on read.
+  geom Unsupported("geometry(Geometry, 3857)")
+
+  @@index([layerId])
+}
+
+/// Open building-footprint reference data (MC-051), self-hosted from
+/// Microsoft's Global ML Building Footprints. Neither Microsoft nor Google
+/// offers a query-by-area API for this data — only bulk per-country
+/// downloads — so importing once and querying our own PostGIS is what makes
+/// "fetch footprints for the current view" possible at all. Global reference
+/// data, not owned by any user or project.
+model BuildingFootprint {
+  id         String @id @default(cuid())
+  /// e.g. "ms-building-footprints" — which dataset this row came from.
+  source     String
+  properties Json
+
+  /// EPSG:3857 to match Feature.geom, so no reprojection on read.
+  geom Unsupported("geometry(Geometry, 3857)")
+
+  /// Which admin area this building falls inside, as the source's own pcode
+  /// (BPS codes such as "ID6411030009"), stamped by MC-063's tagging step.
+  /// Pcodes rather than AdminBoundary ids: the boundary import deletes and
+  /// recreates every row, so an id column would dangle on the next refresh,
+  /// and filtering buildings by area is then an indexed equality test with no
+  /// join at all. Null until the step has run, and for a building outside the
+  /// boundary coverage.
+  provincePcode String?
+  regencyPcode  String?
+  districtPcode String?
+  villagePcode  String?
+
+  /// The four pcode indexes are partial (`WHERE ... IS NOT NULL`) and live in
+  /// the migration as raw SQL — Prisma's DSL cannot express a partial index,
+  /// and a plain one on these columns is actively harmful (see the migration).
+  @@index([source])
+}
+
+/// Indonesia's administrative boundaries (MC-059), from HDX's COD-AB dataset
+/// (BPS via UN OCHA, CC BY-IGO). Lets a user clip BuildingFootprint rows to a
+/// real boundary — down to village level — via a normal ST_Intersects query
+/// at request time, rather than pre-computing and storing a clipped result
+/// per boundary (81,912 villages alone; PostGIS already answers this live).
+model AdminBoundary {
+  id   String @id @default(cuid())
+  /// 1=province, 2=kota/kabupaten, 3=kecamatan, 4=desa/kelurahan.
+  level Int
+  name  String
+  /// Full source feature properties (all 4 levels of names/pcodes, area, etc).
+  properties Json
+
+  /// This row's own pcode, and its parent's, lifted out of `properties` into
+  /// real indexed columns — so resolving a building's stamped pcode back to a
+  /// boundary, and walking the hierarchy for a drill-down picker, are both
+  /// index lookups instead of a scan over a JSON blob.
+  pcode       String?
+  parentPcode String?
+
+  /// EPSG:3857 to match Feature.geom and BuildingFootprint.geom.
+  geom Unsupported("geometry(Geometry, 3857)")
+
+  @@index([level])
+  @@index([name])
+  @@index([pcode])
+  @@index([parentPcode])
+}
+
+/// A queue, not a workflow engine (MC-061) — status, attempts, and a
+/// next-attempt time are enough to guarantee "retry until done" for a
+/// handful of long-running batch imports. Consumed by scripts/worker.mjs,
+/// running as its own docker-compose service so it survives independent of
+/// any local terminal. Admin-only: this is an operational tool, not
+/// something a regular MapCanva user ever sees or triggers.
+enum ImportJobStatus {
+  pending
+  running
+  done
+  failed
+}
+
+model ImportJob {
+  id     String @id @default(cuid())
+  /// e.g. "building-footprints", "admin-boundaries" — which runner handles it.
+  type   String
+  /// Whatever that runner needs — country, level, year.
+  params Json
+
+  status   ImportJobStatus
+  attempts Int
+  /// Set on the most recent failure; cleared on success.
+  lastError String?
+  /// Exponential backoff — the worker skips a failed job until this passes.
+  nextAttemptAt DateTime?
+  /// MinIO object key for the archived raw download, once one exists.
+  archiveKey String?
+  /// Latest onProgress payload from the running job — stage, level, download
+  /// percent, import counts. Cleared when a job is (re)claimed so a retry
+  /// doesn't show the previous attempt's stale progress.
+  progress Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, nextAttemptAt])
+}
+
+/// A single cached FIRMS response (MC-052), keyed by area — "IDN" today, the
+/// only one queried. Every viewer's 10-minute poll hits this instead of
+/// FIRMS directly: FIRMS's own limit is 5,000 transactions/10min per key
+/// (THIRD_PARTY_NOTICES.md), and one shared fetch serves everyone regardless
+/// of how many are watching.
+model FireHotspotCache {
+  id          String   @id
+  features    Json
+  attribution String
+  fetchedAt   DateTime @default(now())
+}
+
+/// One satellite detection, kept for 30 days so the dashboard can play the
+/// month back a day at a time (MC-070). The live layer still reads the cache
+/// above; this is the history behind it.
+model FireHotspot {
+  /// FIRMS has no id of its own. Sensor plus position plus acquisition time is
+  /// stable across the overlapping day-range fetches a backfill makes, so a
+  /// re-run updates rows instead of duplicating them.
+  key         String   @id
+  lat         Float
+  lon         Float
+  detectedAt  DateTime
+  /// The calendar day in WIB. Indonesia spans three zones, but the slider says
+  /// "hari" and a user means their own date, not UTC's — this must stay the
+  /// same offset everywhere it is computed.
+  day         DateTime @db.Date
+  confidence  String
+  /// high | medium | low, matching fireConfidenceBand() on the client.
+  band        String
+  sensor      String
+  satellite   String
+  brightnessK Float?
+  frpMw       Float?
+  /// The village the detection falls in, stamped at import. Doubles as the
+  /// Indonesia filter: every Indonesian land detection matches a village
+  /// polygon, and nothing outside the country matches any admin area at all,
+  /// so a null here means the detection is over Malaysia, PNG or open sea.
+  villagePcode String?
+
+  @@index([day])
+  @@index([day, band])
+}
+
+/// The latest MAGMA Indonesia snapshot of every monitored volcano: level,
+/// eruption and PVMBG recommendation. One row per stored shape — see
+/// MAGMA_CACHE_ID.
+model VolcanoCatalogCache {
+  id        String   @id
+  volcanoes Json
+  fetchedAt DateTime @default(now())
+}
+
+/// Long-running volcano ingest state, one row per job — see
+/// ERUPTION_HISTORY_STATE_ID.
+model VolcanoEventCache {
+  id        String   @id
+  events    Json
+  fetchedAt DateTime @default(now())
+}
+
+/// Every earthquake BMKG's feeds have shown us, kept for the history window.
+/// The id is the event's UTC time, so re-reading a feed never duplicates a row.
+model EarthquakeEvent {
+  id          String   @id
+  /// "bmkg" or "usgs" — shown in the popup, so a USGS location is never
+  /// presented as BMKG's.
+  source      String
+  occurredAt  DateTime
+  lat         Float
+  lon         Float
+  magnitude   Float
+  depthKm     Float
+  area        String
+  potential   String?
+  felt        String?
+  shakemapUrl String?
+
+  @@index([occurredAt])
+}
+
+/// When BMKG was last read. The earthquakes themselves are rows in
+/// EarthquakeEvent — see QUAKE_CACHE_ID.
+model EarthquakeCache {
+  id        String   @id
+  fetchedAt DateTime @default(now())
+}
+
+/// One MAGMA eruption notice, kept for the eruption-history window. The id is
+/// MAGMA's own notice UUID, so re-reading a page never duplicates a row.
+model VolcanoEruptionNotice {
+  id           String   @id
+  volcanoName  String
+  eruptedAt    DateTime
+  ashColumnM   Int?
+  ashDirection String?
+
+  @@index([eruptedAt])
+}

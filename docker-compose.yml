@@ -1,0 +1,99 @@
+# Local Postgres with PostGIS. Production is Railway (MC-033); this exists so
+# development does not depend on a network or a paid instance.
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    # This tag is amd64-only, so it runs under emulation on Apple Silicon.
+    # Fine for a dev database; stated explicitly to silence the warning.
+    platform: linux/amd64
+    container_name: mapcanva-db
+    restart: unless-stopped
+    # Docker's default 64MB /dev/shm is too small for VACUUM's dead-tuple
+    # tracking above the default 64MB maintenance_work_mem — a real bloat
+    # cleanup after MC-063's spatial-join incident needed more (03-gotchas.md).
+    shm_size: "2gb"
+    environment:
+      POSTGRES_USER: mapcanva
+      POSTGRES_PASSWORD: mapcanva
+      POSTGRES_DB: mapcanva
+    # Tuned for a 19GB table on a 16GB laptop. The stock 128MB shared_buffers
+    # and random_page_cost=4 (which assumes spinning disks) push the planner
+    # off index scans and re-read the table from disk constantly.
+    command: >
+      postgres
+      -c shared_buffers=2GB
+      -c effective_cache_size=5GB
+      -c work_mem=64MB
+      -c maintenance_work_mem=512MB
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c max_wal_size=8GB
+      -c checkpoint_completion_target=0.9
+      -c max_connections=50
+    ports:
+      - "5432:5432"
+    volumes:
+      - mapcanva-pgdata:/var/lib/postgresql/data
+    # The image also installs tiger_geocoder and topology, which we do not use.
+    # Harmless clutter in a dev database, and not worth a custom init script.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mapcanva -d mapcanva"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Archives every successful import's raw downloaded file (MC-061), so a
+  # re-import doesn't depend on the upstream URL still being there. Self-
+  # hosted, open-source, S3-compatible — no vendor, no recurring cost.
+  minio:
+    image: minio/minio:latest
+    container_name: mapcanva-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: mapcanva
+      MINIO_ROOT_PASSWORD: mapcanva123
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # web console
+    volumes:
+      - mapcanva-minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Runs the async import pipeline (MC-061) — a background job shouldn't die
+  # because a laptop's terminal closed. `npm ci` on every start is wasteful
+  # but simple; a real Dockerfile can come with MC-033's deployment work.
+  # node_modules is a separate volume, not the host bind mount, so the
+  # container gets its own Linux-native install rather than macOS binaries
+  # (Prisma's engine, bcrypt) that won't run here — see 03-gotchas.md.
+  worker:
+    image: node:22-bookworm
+    container_name: mapcanva-worker
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - .:/app
+      - mapcanva-worker-modules:/app/node_modules
+    environment:
+      DATABASE_URL: postgresql://mapcanva:mapcanva@db:5432/mapcanva?schema=public
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_ACCESS_KEY: mapcanva
+      MINIO_SECRET_KEY: mapcanva123
+      MINIO_BUCKET: mapcanva-imports
+      TAG_CONCURRENCY: "6"
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    command: sh -c "npm ci && npx tsx scripts/pipeline/worker.ts"
+
+volumes:
+  mapcanva-pgdata:
+  mapcanva-minio-data:
+  mapcanva-worker-modules:

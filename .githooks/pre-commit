@@ -1,0 +1,7 @@
+#!/bin/sh
+# Typecheck and lint only — about three seconds. The e2e suite runs on push:
+# a ten-minute pre-commit hook gets --no-verify'd and then guards nothing.
+# Install with `make hooks`.
+
+npx tsc --noEmit || exit 1
+npx eslint src scripts e2e || exit 1

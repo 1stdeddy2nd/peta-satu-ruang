@@ -1,0 +1,180 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "kode": "31.71",
+    "nama": "Jakarta Pusat",
+    "provinsi": "DKI Jakarta"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       106.8,
+       -6.14
+      ],
+      [
+       106.88,
+       -6.14
+      ],
+      [
+       106.88,
+       -6.22
+      ],
+      [
+       106.8,
+       -6.22
+      ],
+      [
+       106.8,
+       -6.14
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "kode": "31.72",
+    "nama": "Jakarta Utara",
+    "provinsi": "DKI Jakarta"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       106.75,
+       -6.08
+      ],
+      [
+       106.95,
+       -6.08
+      ],
+      [
+       106.95,
+       -6.14
+      ],
+      [
+       106.75,
+       -6.14
+      ],
+      [
+       106.75,
+       -6.08
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "kode": "31.73",
+    "nama": "Jakarta Barat",
+    "provinsi": "DKI Jakarta"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       106.68,
+       -6.1
+      ],
+      [
+       106.8,
+       -6.1
+      ],
+      [
+       106.8,
+       -6.22
+      ],
+      [
+       106.68,
+       -6.22
+      ],
+      [
+       106.68,
+       -6.1
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "kode": "31.74",
+    "nama": "Jakarta Selatan",
+    "provinsi": "DKI Jakarta"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       106.76,
+       -6.22
+      ],
+      [
+       106.87,
+       -6.22
+      ],
+      [
+       106.87,
+       -6.37
+      ],
+      [
+       106.76,
+       -6.37
+      ],
+      [
+       106.76,
+       -6.22
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "kode": "31.75",
+    "nama": "Jakarta Timur",
+    "provinsi": "DKI Jakarta"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       106.88,
+       -6.14
+      ],
+      [
+       107.0,
+       -6.14
+      ],
+      [
+       107.0,
+       -6.35
+      ],
+      [
+       106.88,
+       -6.35
+      ],
+      [
+       106.88,
+       -6.14
+      ]
+     ]
+    ]
+   }
+  }
+ ]
+}
